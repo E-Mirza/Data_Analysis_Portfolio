@@ -1,0 +1,394 @@
+---
+title: "EDA_Home_default_risk"
+author: "Elham Mirza"
+date: "2024-11-07"
+output:
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_depth: 3
+    toc_float: true
+      collapsed: false
+      smooth_scroll: true
+    embed_resources: true
+    toc_title: "Contents"
+---
+
+# Introduction
+
+Many people face challenges securing loans due to limited or no credit history, often falling prey to untrustworthy lenders. Home Credit Group aims to enhance financial inclusion by offering safe, positive borrowing experiences for the unbanked, using alternative data like telco and transactional information to assess repayment ability.
+
+# Load Libraries & data set
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(tidyr)
+library(DataExplorer)
+library(rmarkdown)
+library(knitr)
+
+train_df <- read.csv('application_train.csv', stringsAsFactor = FALSE)
+test_df <- read.csv('application_test.csv', stringsAsFactor = FALSE)
+
+head(train_df)
+
+```
+
+# 2: Traget variable analysis
+
+0 - indicates the client did not experience payment difficulties.
+1 - indicates the client had payment difficulties.
+
+
+```{r}
+# Check the distribution of the target variable
+table(train_df$TARGET) %>% prop.table() %>% round(4)
+
+# Calculate proportions of the target variable
+target_distribution <- train_df %>%
+  group_by(TARGET) %>%
+  summarise(Count = n()) %>%
+  mutate(Proportion = Count / sum(Count) * 100,
+         Label = paste0(round(Proportion, 1), "%"))
+
+# Create the pie chart
+ggplot(target_distribution, aes(x = "", y = Proportion, fill = factor(TARGET))) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  labs(title = "Distribution of the Target Variable",
+       fill = "TARGET (0 = No Default, 1 = Default)") +
+  theme_void() +
+  geom_text(aes(label = Label), position = position_stack(vjust = 0.5))
+
+
+```
+
+the data is indeed imbalanced.
+
+# 3 NA's values
+
+```{r}
+key_columns <- c("AMT_INCOME_TOTAL", "AMT_CREDIT", "AMT_ANNUITY", "AMT_GOODS_PRICE",
+                 "DAYS_BIRTH", "DAYS_EMPLOYED", "EXT_SOURCE_1", "EXT_SOURCE_2",
+                 "EXT_SOURCE_3", "OCCUPATION_TYPE", "CNT_FAM_MEMBERS")
+
+# Check missingness for these columns
+na_summary <- sapply(train_df[, key_columns], function(x) sum(is.na(x)) / length(x) * 100)
+na_summary <- sort(na_summary[na_summary > 0], decreasing = TRUE)
+na_summary
+
+```
+
+1. **EXT_SOURCE_1** (56.38%) and **EXT_SOURCE_3** (19.83%): These are external score features with high missing values, yet they're often predictive. Consider median imputation to retain them.
+
+2. **EXT_SOURCE_2** (0.21%) and **AMT_GOODS_PRICE** (0.09%): Low missing values; simple median imputation can handle these without significant impact.
+
+3. **AMT_ANNUITY** (0.0039%) and **CNT_FAM_MEMBERS** (0.00065%): Minimal missingness; median imputation is suitable here, as it won’t affect data quality.
+
+# 4 Observations 
+# 4.1 Gender analysis
+
+
+```{r}
+# Gender distribution by target
+ggplot(train_df, aes(x = CODE_GENDER, fill = factor(TARGET))) +
+  geom_bar(position = "fill") +
+  labs(title = "Gender Distribution by Target",
+       x = "Gender",
+       y = "Proportion",
+       fill = "Default (1) vs No Default (0)") +
+  theme_minimal()
+
+```
+
+# 4.2 Distribution of Credit Amount of Loan
+
+```{r}
+# Distribution of Credit Amount by target
+ggplot(train_df, aes(x = factor(TARGET), y = AMT_CREDIT, fill = factor(TARGET))) +
+  geom_violin(trim = TRUE) +
+  labs(title = "Distribution of Credit Amount by Target",
+       x = "TARGET (0 = No default, 1 = Default)",
+       y = "Credit Amount") +
+  theme_minimal()
+
+
+```
+
+# 4.3  Accompanying Person for the Loan (NAME_TYPE_SUITE)
+
+```{r}
+# Accompanying person analysis by target
+ggplot(train_df, aes(x = NAME_TYPE_SUITE, fill = factor(TARGET))) +
+  geom_bar(position = "fill") +
+  labs(title = "Accompanying Person for Loan by Target",
+       x = "Accompanying Person",
+       y = "Proportion",
+       fill = "Default (1) vs No Default (0)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+This bar chart shows the distribution of loan defaults (`TARGET = 1`) and non-defaults (`TARGET = 0`) based on the person accompanying the applicant during the loan process. Across all categories (e.g., family, spouse, or unaccompanied), non-defaults (red) dominate, indicating that most applicants repay their loans regardless of who accompanies them. The proportion of defaults (blue) is consistently low across all groups, suggesting that the accompanying person has minimal influence on loan default rates.
+
+# 4.4: Income Sources for Applicants (NAME_INCOME_TYPE)
+
+```{r}
+# Income sources analysis by target
+ggplot(train_df, aes(x = NAME_INCOME_TYPE, fill = factor(TARGET))) +
+  geom_bar(position = "fill") +
+  labs(title = "Income Source Types by Target",
+       x = "Income Source",
+       y = "Proportion",
+       fill = "Default (1) vs No Default (0)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+This bar chart illustrates loan repayment outcomes by income source, showing that non-defaults (TARGET = 0, red) dominate across all groups. However, unemployed clients and those on maternity leave show higher default rates (TARGET = 1, blue), while businessmen, pensioners, and state servants have the lowest default rates, indicating stronger financial stability in these groups.
+
+# 4.5 Customer Age (DAYS_BIRTH)
+
+```{r}
+# Convert DAYS_BIRTH to Age in years
+train_df$AGE_YEARS <- abs(train_df$DAYS_BIRTH) / 365
+
+# Create age bins (5-year intervals)
+train_df$AGE_BIN <- cut(train_df$AGE_YEARS, breaks = seq(20, 70, by = 5), right = FALSE)
+
+# Calculate default risk percentage for each age group
+default_risk <- train_df %>%
+  group_by(AGE_BIN) %>%
+  summarise(Default_Risk = sum(TARGET == 1) / n() * 100)
+
+# Create the bar plot
+ggplot(default_risk, aes(x = AGE_BIN, y = Default_Risk)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Default Home Credit Risk by Age Group",
+       x = "Age Group",
+       y = "Default Risk (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
+```
+This bar chart shows the default risk (%) by age group. Younger clients, especially those aged **20–25**, have the highest default risk at approximately **12.5%**, while the risk steadily decreases with age. Older clients, particularly those aged **65–70**, have the lowest default risk at under **5%**, indicating a clear relationship between age and financial stability, with younger clients being more prone to defaults.
+
+# deliquencies
+It is very important to see how many times clients was late with payments or defaulted his loans.
+
+```{r}
+# Filter relevant columns (example with social circle observations)
+late_payments <- train_df %>%
+  select(TARGET, OBS_30_CNT_SOCIAL_CIRCLE, OBS_60_CNT_SOCIAL_CIRCLE) %>%
+  mutate(Total_Late_Payments = OBS_30_CNT_SOCIAL_CIRCLE + OBS_60_CNT_SOCIAL_CIRCLE)
+
+# Summarize total late payments by TARGET
+late_summary <- late_payments %>%
+  group_by(TARGET) %>%
+  summarise(Mean_Late_Payments = mean(Total_Late_Payments, na.rm = TRUE))
+
+# Print summary
+print(late_summary)
+
+# Visualize late payments by TARGET
+ggplot(late_payments, aes(x = factor(TARGET), y = Total_Late_Payments)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Distribution of Late Payments by Target",
+       x = "TARGET (0 = No Default, 1 = Default)",
+       y = "Total Late Payments") +
+  theme_minimal()
+
+
+```
+
+This box plot visualizes the distribution of **total late payments** for clients who successfully repaid their loans (`TARGET = 0`) versus those who defaulted (`TARGET = 1`). The average late payments are slightly higher for defaulting clients (**2.97**) compared to non-defaulting clients (**2.81**). However, the difference is minimal, and the presence of extreme outliers (e.g., clients with over 200 late payments) suggests that late payments alone may not be a strong indicator of default risk for most clients. Further analysis or feature engineering may help refine this relationship.
+
+# To summarize data by education level and default
+
+```{r}
+# Summarize defaults by education
+education_summary <- train_df %>%
+  group_by(NAME_EDUCATION_TYPE, TARGET) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  mutate(Proportion = Count / sum(Count) * 100)
+
+# View summary
+print(education_summary)
+
+# Visualize education vs default rates
+ggplot(education_summary, aes(x = NAME_EDUCATION_TYPE, y = Proportion, fill = factor(TARGET))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Education Levels vs Default Proportion",
+       x = "Education Level",
+       y = "Proportion (%)",
+       fill = "Default (1) vs No Default (0)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+This table summarizes the relationship between education level and loan default status. Clients with secondary/special secondary education represent the majority, accounting for over 64.7% of non-defaults** and 6.3% of defaults. Higher education clients have a lower default proportion (1.3%) relative to their representation in non-defaults (23.0%), indicating a lower risk of default. On the other hand, clients with lower secondary education show a slightly higher default proportion relative to their overall count. Clients with an academic degree have the lowest default proportion, suggesting a strong correlation between higher education levels and lower default risk.
+
+# Calculate and Summarize Loan Amounts
+
+```{r}
+# Summarize loan amounts by education level and target
+loan_summary <- train_df %>%
+  group_by(NAME_EDUCATION_TYPE, TARGET) %>%
+  summarise(Average_Loan = mean(AMT_CREDIT, na.rm = TRUE),
+            Median_Loan = median(AMT_CREDIT, na.rm = TRUE),
+            Max_Loan = max(AMT_CREDIT, na.rm = TRUE),
+            Min_Loan = min(AMT_CREDIT, na.rm = TRUE),
+            Total_Loan = sum(AMT_CREDIT, na.rm = TRUE),
+            .groups = "drop")
+
+# View the summarized data
+print(loan_summary)
+
+# Visualize average loan amount by education and target
+ggplot(loan_summary, aes(x = NAME_EDUCATION_TYPE, y = Average_Loan, fill = factor(TARGET))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Average Loan Amount by Education Level and Target",
+       x = "Education Level",
+       y = "Average Loan Amount",
+       fill = "Default (1) vs No Default (0)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+The bar chart and summary table highlight the average loan amounts across education levels and default statuses. Clients with academic degrees and higher education have higher average loan amounts, indicating they may borrow more due to higher creditworthiness. Interestingly, clients with higher education who default (`TARGET = 1`) have slightly lower average loans compared to non-defaulting clients (`TARGET = 0`). For clients with secondary or lower education,
+the average loan amount is generally smaller, regardless of default status. This indicates that education level correlates with borrowing capacity, while default rates may depend on other factors alongside loan size.
+
+# analyze loan amounts across income groups and default status
+
+```{r}
+# Define income groups based on quantiles
+train_df <- train_df %>%
+  mutate(Income_Group = cut(AMT_INCOME_TOTAL,
+                            breaks = quantile(AMT_INCOME_TOTAL, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE),
+                            labels = c("Low Income", "Medium Income", "High Income", "Very High Income"),
+                            include.lowest = TRUE))
+
+# Summarize loan amounts by income group and target
+income_loan_summary <- train_df %>%
+  group_by(Income_Group, TARGET) %>%
+  summarise(Average_Loan = mean(AMT_CREDIT, na.rm = TRUE),
+            Median_Loan = median(AMT_CREDIT, na.rm = TRUE),
+            Max_Loan = max(AMT_CREDIT, na.rm = TRUE),
+            Total_Loan = sum(AMT_CREDIT, na.rm = TRUE),
+            .groups = "drop")
+
+# View the summary table
+print(income_loan_summary)
+
+# Visualize loan amounts by income group and target
+ggplot(income_loan_summary, aes(x = Income_Group, y = Average_Loan, fill = factor(TARGET))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Average Loan Amount by Income Group and Default Status",
+       x = "Income Group",
+       y = "Average Loan Amount",
+       fill = "Default (1) vs No Default (0)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Define income groups based on quantiles
+train_df <- train_df %>%
+  mutate(Income_Group = cut(AMT_INCOME_TOTAL,
+                            breaks = quantile(AMT_INCOME_TOTAL, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE),
+                            labels = c("Low Income", "Medium Income", "High Income", "Very High Income"),
+                            include.lowest = TRUE))
+
+# Summarize loan amounts by income group
+income_loan_summary <- train_df %>%
+  group_by(Income_Group) %>%
+  summarise(Average_Loan = mean(AMT_CREDIT, na.rm = TRUE),
+            Median_Loan = median(AMT_CREDIT, na.rm = TRUE),
+            Total_Loan = sum(AMT_CREDIT, na.rm = TRUE),
+            .groups = "drop")
+
+# Visualize average loan amounts by income group
+ggplot(income_loan_summary, aes(x = Income_Group, y = Average_Loan, fill = Income_Group)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Loan Amount by Income Group",
+       x = "Income Group",
+       y = "Average Loan Amount",
+       fill = "Income Group") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+higher income groups generally borrow larger amounts, regardless of default status.loan amounts increase with income level, indicating a strong positive correlation between income and borrowing capacity. This highlights income as a key factor in determining loan size.
+
+# Pair-plot
+
+```{r}
+
+library(GGally)
+library(dplyr)
+
+# Select numerical variables for pair plot analysis
+pair_vars <- train_df %>% 
+  select(AMT_CREDIT, AMT_ANNUITY, AMT_GOODS_PRICE, DAYS_BIRTH, DAYS_EMPLOYED, TARGET)
+pair_vars_clean <- pair_vars %>%
+  na.omit()
+
+pair_vars_clean <- pair_vars_clean %>%
+  select_if(~ sd(., na.rm = TRUE) > 0)
+
+# Create pair plot
+ggpairs(pair_vars_clean, 
+        aes(color = as.factor(TARGET), alpha = 0.5)) +
+  labs(title = "Pairwise Relationships by Default Status",
+       color = "Default (1) vs No Default (0)") +
+  theme_minimal()
+```
+
+# 5 correlations between the numerical variables and the target variable (TARGET)
+
+```{r}
+# Step 1: Calculate the correlation matrix for numeric columns
+cor_matrix <- cor(train_df %>% select_if(is.numeric), use = "complete.obs")
+
+# Step 2: Extract correlations with the target variable
+target_correlations <- cor_matrix["TARGET", ]
+
+# Remove the self-correlation of TARGET with itself
+target_correlations <- target_correlations[names(target_correlations) != "TARGET"]
+
+# Step 3: Sort correlations by absolute value to get both strong positive and negative correlations
+sorted_correlations <- target_correlations[order(abs(target_correlations), decreasing = TRUE)]
+
+# Step 4: Display the top 10 correlations (both positive and negative)
+knitr::kable(head(sorted_correlations, 10), caption = "Top 10 Correlations with Target (Both Positive and Negative)")
+
+```
+
+The top 10 correlations with the target show that external scores (`EXT_SOURCE_3`, `EXT_SOURCE_2`, and `EXT_SOURCE_1`) have the strongest negative associations with default, suggesting that higher scores relate to lower default risk. Regional ratings (`REGION_RATING_CLIENT_W_CITY` and `REGION_RATING_CLIENT`) and a specific document flag (`FLAG_DOCUMENT_3`) show positive correlations, indicating clients from higher-rated regions or with this document may have a slightly increased default risk. Building features related to the maximum number of floors (`FLOORSMAX_AVG`, `FLOORSMAX_MODE`, `FLOORSMAX_MEDI`) and client age (`DAYS_BIRTH`) have weaker correlations, with taller buildings and older clients showing a mild association with lower default risk.
+
+
+# 6
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
