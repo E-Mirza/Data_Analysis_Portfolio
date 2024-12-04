@@ -15,14 +15,20 @@
    The objective of this project is to analyze the **Home Credit Default Risk** dataset and:
    1. Perform exploratory data analysis (EDA) to uncover key trends, patterns, and relationships influencing loan defaults.
    2. Identify critical predictors for credit risk assessment.
-   3. Build predictive models using machine learning techniques, including **XGBoost**, **logistic regression**, and **random forest**, to forecast default probabilities.
-   4. Evaluate model performance to ensure accurate and actionable insights, enabling lenders to make informed decisions and minimize financial risk.
+   3. Build predictive models using machine learning techniques, including **XGBoost**, **logistic regression**, and 
+   **random forest**, to forecast default probabilities.
+   4. Evaluate model performance to ensure accurate and actionable insights, enabling lenders to make informed decisions and 
+   minimize financial risk.
    ### Data Sources:
-   The data is provided by Home Credit, a service dedicated to provided lines of credit (loans) to the unbanked population. Predicting whether or not a client will repay a 
-   loan or have difficulty is a critical business need, and Home Credit wants to unlock the full potential of their data to see what sort of machine learning/deep learning      models can be develop to help them in this task.
+   The data is provided by Home Credit, a service dedicated to provided lines of credit (loans) to the unbanked population. 
+   Predicting whether or not a client will repay a 
+   loan or have difficulty is a critical business need, and Home Credit wants to unlock the full potential of their data to 
+   see what sort of machine learning/deep learning      models can be develop to help them in this task.
    ### Data Exploration:
-   Data Exploration is a process where we analyze data to find trends, patterns, anomalies, or relationships. The goal is to understand what the data can reveal. It usually 
-   starts with a broad overview and then focuses on specific details as we find interesting areas. The insights gained can be valuable on their own or help guide decisions 
+   Data Exploration is a process where we analyze data to find trends, patterns, anomalies, or relationships. The goal is to 
+   understand what the data can reveal. It usually 
+   starts with a broad overview and then focuses on specific details as we find interesting areas. The insights gained can 
+   be valuable on their own or help guide decisions 
    for modeling, such as selecting which features to use.
    Exploratory Data Analysis (EDA)
       ### Key findings from EDA include:
@@ -31,7 +37,8 @@
    #### Age and Defaults:
    Younger borrowers (20-30 years) show the highest default rates, while older borrowers (65+ years) have the lowest.
    #### Education Levels:
-   Borrowers with higher education or academic degrees are less likely to default compared to those with lower secondary education.
+   Borrowers with higher education or academic degrees are less likely to default compared to those with lower secondary 
+   education.
    #### Loan Amounts:
    Higher average loan amounts are associated with defaulters in some education and income groups.
    #### Income Groups:
@@ -42,6 +49,18 @@
    #### Late Payments:
    Defaults are slightly associated with a higher number of late payments, but extreme outliers exist.
 
+   ### My Contribution to the Project
+   As part of a four-member team, I contributed to various aspects of the **Home Credit Default Risk** project. While all 
+   group members worked collaboratively, one member achieved a particularly strong Kaggle score with their model, which we 
+   collectively decided to use as our final submission. My specific contributions included: 
+   - I analyzed the performance of all models created by the group, including **Logistic Regression**, **Random Forest**, 
+   and **XGBoost**, to identify strengths and weaknesses.
+   - I documented the evaluation metrics (e.g., accuracy, AUC, precision, recall) for each model to provide a clear 
+   comparison.
+   - I summarized the final results, explaining why the selected model (XGBoost) performed best, and highlighting its key 
+   advantages.
+   My role was integral in synthesizing insights and providing a clear narrative that tied together the team's efforts, 
+   ensuring a cohesive and impactful final submission.
 
 
 
