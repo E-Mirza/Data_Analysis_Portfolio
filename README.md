@@ -1,6 +1,6 @@
 # Data_Analysis_Portfolio
 ## Projects
-1. [Home Credit Default Risk]
+1. [Home Credit Default Risk](https://github.com/E-Mirza/Data_Analysis_Portfolio/tree/main/Home%20Credit%20Default%20Risk)
    ### Overview:
    #### Default Risk:
    When borrowers cannot make contractual payments, default risk can occur.
