@@ -62,6 +62,11 @@
    My role was integral in synthesizing insights and providing a clear narrative that tied together the team's efforts, 
    ensuring a cohesive and impactful final submission.
 
+   ## Data Modelling:
+   Implemented and evaluated the following models:
+   ### Logistic Regression
+   ### Random Forest
+   ### XGBoost
 
 
 
