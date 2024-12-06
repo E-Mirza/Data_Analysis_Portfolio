@@ -13,7 +13,6 @@ output:
     toc_title: "Contents"
 ---
 
-# 
 
 ```{r}
 
