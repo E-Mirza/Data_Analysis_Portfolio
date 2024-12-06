@@ -68,10 +68,71 @@
    ### Random Forest
    ### XGBoost
 
+   ### Results
+   #### Logistic Regression
+   AUC-ROC Score: 0.7365
+   Logistic Regression demonstrated reliable performance, making it a strong baseline model for the dataset.
+   #### Random Forest
+   AUC-ROC Score: 0.6913
+   Random Forest provided reasonable performance, although it fell short compared to Logistic Regression.
+   #### XGBoost
+   Training AUC-ROC: 1.0000
+   Validation AUC-ROC: 0.4999
+   XGBoost significantly overfit the training set and failed to generalize to the validation set, highlighting the need for 
+   further tuning
 
+   ### Challenges
+   Class Imbalance:
+   Required extensive preprocessing to balance the dataset.
+   Overfitting in XGBoost:
+   Despite tuning, the XGBoost model overfit the training data but performed poorly on the validation set.
+   ### Solution to the Business Problem
+   The goal of the project was to predict the likelihood of a client defaulting on their loan using machine learning 
+   models. Based on the analysis:
+   Logistic Regression emerged as the most effective model with an AUC-ROC of 0.7365, providing a reliable baseline for 
+   identifying potential defaulters.
+   This solution can be used by lenders to assess credit risk, enabling better decision-making for loan approvals and 
+   reducing financial losses caused by defaults.
+   ### Business Value of the Solution
+   #### Improved Risk Assessment:
+   The model allows lenders to flag high-risk applicants, minimizing loan defaults and improving profitability.
+   #### Efficient Resource Allocation:
+   Helps prioritize resources for collections or additional investigations into flagged applications.
+   #### Compliance with Financial Regulations:
+   Ensures responsible lending practices by evaluating the creditworthiness of applicants.
+   
+   ### Difficulties Encountered
+   #### Class Imbalance:
+   The dataset had significantly more non-default cases than default cases, requiring techniques like SMOTE and careful 
+   metric selection (e.g., ROC instead of accuracy).
+   #### Overfitting in XGBoost:
+   XGBoost overfit the training data due to insufficient tuning and complexity of the model. Extensive trial-and-error 
+   tuning was needed, but it still failed to generalize well.
+   #### Large Dataset Processing:
+   Handling the large dataset required optimizing preprocessing and leveraging parallel computing to reduce runtime.
+   #### Group Coordination:
+   Balancing tasks among group members and ensuring consistent approaches in preprocessing and evaluation posed challenges.
 
+   ## What I Learned
+   #### Importance of Preprocessing:
+   Handling missing values, class imbalances, and feature scaling are critical to building reliable models.
+   #### Model Evaluation:
+   Using metrics like AUC-ROC is more insightful than accuracy, especially with imbalanced datasets.
+   #### Strengths and Limitations of Algorithms:
+   Logistic Regression is simple yet effective for baseline performance.
+   Complex models like XGBoost require careful tuning to avoid overfitting.
+   #### Team Collaboration:
+   Dividing roles (e.g., preprocessing, modeling, and evaluation) and combining efforts led to a well-rounded solution.
+   #### Iterative Approach:
+   Modeling involves continuous testing, refinement, and validation to achieve optimal results.
 
-
+   ## Summary
+   The project provided valuable insights into predicting loan defaults using machine learning. Logistic Regression emerged 
+   as the most suitable model, striking a balance between interpretability and performance. The solution offers significant 
+   business value by aiding lenders in better credit risk management. Despite challenges like class imbalance and 
+   overfitting, the team successfully implemented a robust process and gained practical experience in data science 
+   workflows.
+  
 
 
 
