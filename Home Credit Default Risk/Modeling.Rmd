@@ -1,0 +1,375 @@
+---
+title: "Modeling"
+author: "Elham Mirza"
+date: "2024-10-29"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+    embed_resources: true
+    toc_title: "Contents"
+---
+
+# 
+
+```{r}
+
+library(dplyr)
+library(caret)
+library(tidymodels)
+library(glmnet)
+library(ranger)
+library(randomForest)
+library(smotefamily)
+library(tictoc)
+library(ROSE)
+library(pROC)
+
+tic("Total Time")
+
+# Load and prepare dataset
+train_data <- read.csv("application_train.csv")
+train_data$TARGET <- as.factor(train_data$TARGET)
+
+set.seed(123)
+train_index <- createDataPartition(train_data$TARGET, p = 0.8, list = FALSE)
+train_set <- train_data[train_index, ]
+validation_set <- train_data[-train_index, ]
+
+# Step 2: Impute missing values in train_set
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+tic("Imputation of train set")
+train_set <- train_set %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+toc()
+
+# Step 3: Apply ROSE to balance the classes in the training set
+tic("Applying ROSE")
+train_set_balanced <- ROSE(TARGET ~ ., data = train_set)$data
+toc()
+
+# Rename factor levels in TARGET to valid R variable names for both train and validation sets
+train_set_balanced$TARGET <- factor(train_set_balanced$TARGET, levels = c("0", "1"), labels = c("Class0", "Class1"))
+validation_set$TARGET <- factor(validation_set$TARGET, levels = c("0", "1"), labels = c("Class0", "Class1"))
+
+# Step 4: Impute missing values in validation_set to ensure full data compatibility
+validation_set <- validation_set %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+# Step 5: Set up k-Fold Cross-Validation (3-fold for faster training)
+cv_control <- trainControl(method = "cv", number = 3, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+# Step 6: Train the Logistic Regression Model with glmnet on the balanced data
+tic("Logistic Regression Model Training")
+set.seed(123)
+logistic_model <- train(
+  TARGET ~ ., 
+  data = train_set_balanced, 
+  method = "glmnet",  # Logistic regression with glmnet for efficiency
+  trControl = cv_control,
+  metric = "ROC",  # Using ROC as the performance metric
+  tuneGrid = expand.grid(alpha = 1, lambda = 0.01)  # Lasso regularization
+)
+toc()
+
+# Step 7: Make Predictions on the Full Validation Set
+tic("Prediction on validation set")
+logistic_predictions <- predict(logistic_model, newdata = validation_set, type = "prob")[,2]  # Probabilities for Class1
+toc()
+
+# Verify the lengths to confirm they match
+cat("Length of validation_set$TARGET:", length(validation_set$TARGET), "\n")
+cat("Length of logistic_predictions:", length(logistic_predictions), "\n")
+
+# Step 8: Evaluate Model Performance with AUC-ROC if lengths match
+tic("AUC-ROC Calculation")
+if(length(validation_set$TARGET) == length(logistic_predictions)) {
+  roc_logistic <- roc(validation_set$TARGET, logistic_predictions, levels = rev(levels(validation_set$TARGET)))
+  auc_logistic <- auc(roc_logistic)
+  print(auc_logistic)  # Explicitly print the AUC-ROC value
+  cat("Logistic Regression AUC-ROC Score:", auc_logistic, "\n")
+} else {
+  cat("Mismatch in lengths between validation target and predictions. Check data.")
+}
+
+
+```
+
+#2 random forest with cross validation
+
+```{r}
+library(parallel)
+library(doParallel)
+
+set.seed(123)
+train_index <- createDataPartition(train_data$TARGET, p = 0.8, list = FALSE)
+train_set <- train_data[train_index, ]
+validation_set <- train_data[-train_index, ]
+
+# Define Mode function for categorical imputation
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Impute missing values in train_set before balancing
+train_set <- train_set %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+# Apply ROSE to balance the classes in the training set
+train_set_balanced <- ROSE(TARGET ~ ., data = train_set)$data
+
+# Identify columns with missing values in train_set_balanced
+missing_summary <- sapply(train_set_balanced, function(x) sum(is.na(x)))
+missing_columns <- names(missing_summary[missing_summary > 0])
+
+# Separate numeric and character columns with missing values
+numeric_missing_cols <- missing_columns[vapply(train_set_balanced[missing_columns], is.numeric, logical(1))]
+character_missing_cols <- missing_columns[vapply(train_set_balanced[missing_columns], is.character, logical(1))]
+
+
+# Step 2: Impute missing values in train_set_balanced
+# Impute numeric columns with the median
+if (length(numeric_missing_cols) > 0) {
+  train_set_balanced <- train_set_balanced %>%
+    mutate(across(all_of(numeric_missing_cols), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
+}
+
+if (length(numeric_missing_cols) > 0) {
+  train_set_balanced <- train_set_balanced %>%
+    mutate(across(all_of(numeric_missing_cols), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
+}
+
+# Impute character columns with the mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+if (length(character_missing_cols) > 0) {
+  train_set_balanced <- train_set_balanced %>%
+    mutate(across(all_of(character_missing_cols), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+}
+
+# Verify that all missing values have been handled
+if (any(is.na(train_set_balanced))) {
+  stop("Missing values remain in train_set_balanced after imputation.")
+} else {
+  cat("All missing values in train_set_balanced have been handled.\n")
+}
+
+# Rename factor levels in TARGET to avoid ranger naming issues
+train_set_balanced$TARGET <- factor(train_set_balanced$TARGET, levels = c("0", "1"), labels = c("Zero", "One"))
+validation_set$TARGET <- factor(validation_set$TARGET, levels = c("0", "1"), labels = c("Zero", "One"))
+
+# Set up parallel processing
+cl <- makeCluster(detectCores() - 1)
+registerDoParallel(cl)
+
+# Set up k-Fold Cross-Validation with 3-folds for faster training
+cv_control <- trainControl(method = "cv", number = 3, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+# Define the parameter grid for Random Forest
+tune_grid <- expand.grid(
+  mtry = sqrt(ncol(train_set_balanced) - 1),  # mtry based on the square root of features
+  splitrule = "gini",                         # Splitting rule for classification
+  min.node.size = 5                           # Minimum size of terminal nodes
+)
+
+# Train the Random Forest model
+tic("Random Forest Model Training")
+set.seed(123)
+rf_model_balanced <- train(
+  TARGET ~ ., 
+  data = train_set_balanced, 
+  method = "ranger",
+  trControl = cv_control,
+  metric = "ROC",  # Using ROC as the performance metric
+  tuneGrid = tune_grid,
+  num.trees = 100,        # Reduce the number of trees to 100
+  importance = "impurity", # Enable feature importance
+  max.depth = 10           # Limit maximum depth of trees
+)
+toc()
+
+# Stop parallel processing
+stopCluster(cl)
+
+# Impute missing values in validation_set
+validation_set <- validation_set %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+# Make predictions on the validation set
+tic("Prediction on validation set")
+predictions_validation <- predict(rf_model_balanced, newdata = validation_set, type = "prob")[,2]
+toc()
+
+# Evaluate model performance using AUC-ROC
+tic("Model Evaluation")
+roc_curve <- roc(validation_set$TARGET, predictions_validation, levels = rev(levels(validation_set$TARGET)))
+auc_score <- auc(roc_curve)
+cat("Random Forest AUC-ROC Score:", auc_score, "\n")
+toc()
+
+
+```
+
+```{r}
+set.seed(123)
+train_index <- createDataPartition(train_data$TARGET, p = 0.8, list = FALSE, times = 1)
+train_set <- train_data[train_index, ]
+validation_set <- train_data[-train_index, ]
+
+# Define Mode function for categorical imputation
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Step 2: Impute missing values in train_set
+train_set <- train_set %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+# Step 3: Apply ROSE to balance the classes in the training set
+train_set_balanced <- ROSE(TARGET ~ ., data = train_set)$data
+
+# Step 4: Impute missing values in train_set_balanced
+train_set_balanced <- train_set_balanced %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+# Verify that there are no remaining missing values
+if(sum(is.na(train_set_balanced)) > 0) {
+  stop("There are still missing values in train_set_balanced")
+}
+
+# Step 5: Set up k-Fold Cross-Validation (3-fold for faster training)
+cv_control <- trainControl(method = "cv", number = 3, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+train_set_balanced$TARGET <- factor(train_set_balanced$TARGET, levels = c("0", "1"), labels = c("Zero", "One"))
+validation_set$TARGET <- factor(validation_set$TARGET, levels = c("0", "1"), labels = c("Zero", "One"))
+
+# Define the parameter grid for Random Forest
+tune_grid <- expand.grid(
+  mtry = sqrt(ncol(train_set_balanced) - 1),  # mtry based on the square root of features
+  splitrule = "gini",                         # Splitting rule for classification
+  min.node.size = 5                           # Minimum size of terminal nodes
+)
+
+# Step 6: Train the Random Forest Model
+set.seed(123)
+tic("Random Forest Model Training")
+
+
+cv_control <- trainControl(
+  method = "cv",
+  number = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  allowParallel = FALSE  # Disable parallel processing
+)
+
+# Train the Random Forest model without parallel processing
+rf_model_balanced <- train(
+  TARGET ~ ., 
+  data = train_set_balanced, 
+  method = "ranger",
+  trControl = cv_control,
+  metric = "ROC",  # Using ROC as the performance metric
+  tuneGrid = tune_grid,
+  num.trees = 100,        # Reduce the number of trees to 100
+  importance = "impurity", # Enable feature importance
+  max.depth = 10           # Limit maximum depth of trees
+)
+
+toc()
+
+validation_set <- validation_set %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+predictions_validation <- predict(rf_model_balanced, newdata = validation_set, type = "prob")[,2]
+
+# Evaluate Model Performance
+
+roc_curve <- roc(validation_set$TARGET, predictions_validation, levels = rev(levels(validation_set$TARGET)))
+auc_score <- auc(roc_curve)
+cat("Random Forest AUC-ROC Score:", auc_score, "\n")
+
+```
+
+
+
+```{r}
+saveRDS(rf_model_balanced, "rf_model_balanced.rds")
+rf_model_balanced <- readRDS("rf_model_balanced.rds")
+test_data <- read.csv("application_test.csv")
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Apply the same preprocessing as for train_data
+test_data <- test_data %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(where(is.character), ~ as.factor(ifelse(is.na(.), Mode(.), .))))
+
+# Ensure factor levels in test_data match those in train_data
+for (col in names(test_data)) {
+  if (is.factor(test_data[[col]]) && col %in% names(train_data) && is.factor(train_data[[col]])) {
+    # Add missing levels to test_data that are present in train_data
+    missing_levels <- setdiff(levels(train_data[[col]]), levels(test_data[[col]]))
+    levels(test_data[[col]]) <- c(levels(test_data[[col]]), missing_levels)
+  }
+}
+
+kaggle_predictions <- predict(rf_model_balanced, newdata = test_data, type = "prob")[,2]
+cat("Number of predictions:", length(kaggle_predictions), "\n")  # Should be 48744
+
+# Prepare the submission file if the row counts match
+if (nrow(test_data) == length(kaggle_predictions)) {
+  submission <- data.frame(SK_ID_CURR = test_data$SK_ID_CURR, TARGET = kaggle_predictions)
+  write.csv(submission, "kaggle_submission.csv", row.names = FALSE)
+  cat("Submission file created successfully with", nrow(submission), "rows.\n")
+} else {
+  cat("Mismatch between number of rows in test_data and predictions. Check preprocessing.\n")
+}
+
+
+
+
+# Logistic Regression predictions
+logistic_predictions <- predict(logistic_model, newdata = test_data, type = "prob")[,2]
+
+# Random Forest predictions
+rf_predictions <- predict(rf_model_balanced, newdata = test_data, type = "prob")[,2]
+# Average the predictions from both models
+ensemble_predictions <- (logistic_predictions + rf_predictions) / 2
+
+# Create submission data frame
+submission <- data.frame(SK_ID_CURR = test_data$SK_ID_CURR, TARGET = ensemble_predictions)
+
+# Save as a CSV file for Kaggle submission
+write.csv(submission, "kaggle_submission.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+
+
+
