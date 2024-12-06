@@ -62,7 +62,7 @@
    My role was integral in synthesizing insights and providing a clear narrative that tied together the team's efforts, 
    ensuring a cohesive and impactful final submission.
 
-   ## Data Modelling:
+   ## Data Modelling:{https://github.com/E-    Mirza/Data_Analysis_Portfolio/blob/main/Home%20Credit%20Default%20Risk/Modeling.Rmd}
    Implemented and evaluated the following models:
    ### Logistic Regression
    ### Random Forest
