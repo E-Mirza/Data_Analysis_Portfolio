@@ -68,7 +68,7 @@
    ### Random Forest
    ### XGBoost
 
-   ### Results
+   ### Results:
    #### Logistic Regression
    AUC-ROC Score: 0.7365
    Logistic Regression demonstrated reliable performance, making it a strong baseline model for the dataset.
