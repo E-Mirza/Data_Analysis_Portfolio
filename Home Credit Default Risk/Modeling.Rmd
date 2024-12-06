@@ -366,7 +366,83 @@ write.csv(submission, "kaggle_submission.csv", row.names = FALSE)
 
 
 ```
+```{r}
+library(xgboost)
 
+library(caret)  # For dummyVars
+
+# Step 1: Convert categorical variables to one-hot encoding
+dummies <- dummyVars(TARGET ~ ., data = train_set_balanced)
+train_set_balanced_encoded <- predict(dummies, newdata = train_set_balanced)
+
+# Ensure TARGET is numeric for XGBoost
+xgb_train <- xgb.DMatrix(
+  data = as.matrix(train_set_balanced_encoded),
+  label = as.numeric(train_set_balanced$TARGET) - 1  # Convert factors to 0/1
+)
+
+# Similarly, encode validation set
+validation_encoded <- predict(dummies, newdata = validation_set)
+
+xgb_validation <- xgb.DMatrix(
+  data = as.matrix(validation_encoded),
+  label = as.numeric(validation_set$TARGET) - 1
+)
+
+
+tic("XGBoost Model Training")
+set.seed(123)
+
+# Define parameters for XGBoost
+xgb_params <- list(
+  objective = "binary:logistic",   # Binary classification
+  eval_metric = "auc",            # Use AUC as the evaluation metric
+  eta = 0.1,                      # Learning rate
+  max_depth = 6,                  # Maximum tree depth
+  min_child_weight = 1,           # Minimum sum of instance weight in a child
+  subsample = 0.8,                # Subsample ratio of training instances
+  colsample_bytree = 0.8          # Subsample ratio of columns
+)
+
+# Perform cross-validation to find the best number of rounds
+cv_result <- xgb.cv(
+  params = xgb_params,
+  data = xgb_train,
+  nrounds = 200,                  # Maximum number of boosting rounds
+  nfold = 3,                      # Number of cross-validation folds
+  stratified = TRUE,              # Stratified sampling
+  print_every_n = 10,             # Log every 10 iterations
+  early_stopping_rounds = 10,     # Stop if no improvement in 10 rounds
+  maximize = TRUE
+)
+
+# Get the best number of rounds
+best_nrounds <- cv_result$best_iteration
+
+# Train the final XGBoost model
+xgb_model <- xgboost(
+  params = xgb_params,
+  data = xgb_train,
+  nrounds = best_nrounds,
+  verbose = 1                     # Show progress during training
+)
+toc()
+
+tic("Prediction on validation set (XGBoost)")
+xgb_predictions <- predict(xgb_model, xgb_validation)  # Get probabilities for Class1
+toc()
+
+tic("AUC-ROC Calculation (XGBoost)")
+if (length(validation_set$TARGET) == length(xgb_predictions)) {
+  roc_xgb <- roc(validation_set$TARGET, xgb_predictions, levels = rev(levels(validation_set$TARGET)))
+  auc_xgb <- auc(roc_xgb)
+  print(auc_xgb)  # Print the AUC-ROC value
+  cat("XGBoost AUC-ROC Score:", auc_xgb, "\n")
+} else {
+  cat("Mismatch in lengths between validation target and predictions. Check data.")
+}
+toc()
+```
 
 
 
